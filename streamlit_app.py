@@ -1174,7 +1174,7 @@ def main():
                     auth_password = st.text_input("추가 관리자 비밀번호 입력", type="password")
                     auth_submit = st.form_submit_button("인증")
                     if auth_submit:
-                        if auth_password == "th1229":
+                        if auth_password == st.secrets["ADMIN_PASSWORD"]:
                             st.session_state.settings_access_granted = True
                             st.success("관리자 설정 접근이 승인되었습니다.")
                             st.rerun()
