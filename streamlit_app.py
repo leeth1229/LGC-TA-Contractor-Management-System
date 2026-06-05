@@ -13,9 +13,11 @@ from datetime import datetime, date
 st.set_page_config(page_title="TA 협력사 관리", layout="wide")
 
 FACTORIES = ["NCC", "OXO", "IPA2", "IPA3", "3AA", "BDBTX", "BPA", "HDPE", "NPG", "PC"]
-LG_CREDENTIALS = {"admin1": "1342",
-                  "admin2": "1342",
-                  "admin3": "1342"}
+
+import streamlit as st
+
+LG_CREDENTIALS = st.secrets["LG_CREDENTIALS"]
+
 CONTRACTORS = [
     {"name": "대아", "factory": "NCC", "order": "NCC Cracking H/T 보수"},
     {"name": "동남로", "factory": "OXO", "order": "DC-101 내화물 보수"},
