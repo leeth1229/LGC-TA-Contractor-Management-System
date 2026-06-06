@@ -300,15 +300,32 @@ def get_company_tasks(company: str) -> list[str]:
     return [c["order"] for c in CONTRACTORS if c["name"] == company]
 
 
+# def get_latest_progress_average(df: pd.DataFrame) -> float:
+#     if df.empty:
+#         return 0.0
+#     latest_date = df["date"].dt.date.max()
+#     latest_reports = df[df["date"].dt.date == latest_date]
+#     latest_reports = latest_reports.drop_duplicates(subset=["task"], keep="last")
+#     avg = latest_reports["progress"].mean() if not latest_reports.empty else 0.0
+#     return float(round(avg, 1))
 def get_latest_progress_average(df: pd.DataFrame) -> float:
     if df.empty:
         return 0.0
-    latest_date = df["date"].dt.date.max()
-    latest_reports = df[df["date"].dt.date == latest_date]
-    latest_reports = latest_reports.drop_duplicates(subset=["task"], keep="last")
-    avg = latest_reports["progress"].mean() if not latest_reports.empty else 0.0
+    
+    # 1. 안전하게 날짜 정렬 (과거 -> 최신 순)
+    df_sorted = df.sort_values(by="date", ascending=True)
+    
+    # 2. 각 작업(task)별로 가장 마지막(최신)에 등록된 행만 남기고 이전 내역은 제거
+    # 이렇게 하면 6/6일 자 HDPE(46%)와 6/3일 자 NCC(22%)가 각각 1줄씩 완벽히 추출됩니다.
+    latest_per_task = df_sorted.drop_duplicates(subset=["task"], keep="last")
+    
+    # 3. 추출된 최신 진척도들의 평균 계산 (46과 22의 평균 = 34.0%)
+    if not latest_per_task.empty:
+        avg = latest_per_task["progress"].mean()
+    else:
+        avg = 0.0
+        
     return float(round(avg, 1))
-
 
 def get_report_image_paths(row) -> list[str]:
     image_names = [n.strip() for n in str(row.get("images", "")).split(",") if n.strip()]
@@ -523,14 +540,31 @@ def show_dashboard():
         else:
             progress_trend = pd.DataFrame({"date": full_dates, "progress": [0] * len(full_dates)})
 
+        # ==========================================
+        # 1. 작업 진척도 라인 차트
+        # ==========================================
         fig1 = px.line(progress_trend, x="date", y="progress", markers=True, title="작업 진척도")
         fig1.update_yaxes(range=[0, 100])
         update_date_axis(fig1, plot_start, plot_end)
-        st.plotly_chart(fig1, use_container_width=True)
+        
+        # 💡 [모바일 최적화] 터치 드래그 및 마우스 확대/축소/이동 방지 설정
+        fig1.update_layout(
+            dragmode=False,                  # 드래그 영역 선택 확대 방지
+            xaxis=dict(fixedrange=True),     # X축 확대 고정 (터치 스크롤 허용)
+            yaxis=dict(fixedrange=True),     # Y축 확대 고정
+            margin=dict(l=20, r=20, t=40, b=40) # 모바일 여백 최적화
+        )
+        # 💡 [출력 설정] 차트 상단 툴바 메뉴 제거 및 터치 줌 방지
+        st.plotly_chart(fig1, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
+
+        # ==========================================
+        # 2. 작업인원 라인 차트
+        # ==========================================
         personnel_trend = reports.groupby(reports["date"].dt.date)["personnel"].sum().reset_index()
         personnel_trend["date"] = pd.to_datetime(personnel_trend["date"])
         fig_personnel = px.line(personnel_trend, x="date", y="personnel", title="작업인원")
+        
         if not personnel_trend.empty:
             peak_row = personnel_trend.loc[personnel_trend["personnel"].idxmax()]
             peak_date = peak_row["date"]
@@ -547,8 +581,20 @@ def show_dashboard():
                 )
             )
         update_date_axis(fig_personnel, plot_start, plot_end)
-        st.plotly_chart(fig_personnel, use_container_width=True)
+        
+        # 💡 [모바일 최적화] 터치 드래그 및 마우스 확대/축소/이동 방지 설정
+        fig_personnel.update_layout(
+            dragmode=False,
+            xaxis=dict(fixedrange=True),
+            yaxis=dict(fixedrange=True),
+            margin=dict(l=20, r=20, t=40, b=40)
+        )
+        st.plotly_chart(fig_personnel, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
 
+
+        # ==========================================
+        # 3. 중장비 스택 바 차트
+        # ==========================================
         equipment_rows = []
         for _, row in reports[["date", "equipment"]].iterrows():
             parsed = parse_equipment_entries(row["equipment"], default_tons=row.get("tons", 0))
@@ -559,12 +605,14 @@ def show_dashboard():
                     "tons": item["tons"],
                 })
         equipment_df = pd.DataFrame(equipment_rows)
+        
         if not equipment_df.empty:
             equipment_df["equipment"] = equipment_df["equipment"].str.strip()
             equipment_df = equipment_df[~equipment_df["equipment"].isin(["없음", ""])]
             equipment_df["combo"] = equipment_df["equipment"] + "+" + equipment_df["tons"].astype(str) + "ton"
             equipment_trend = equipment_df.groupby([equipment_df["date"].dt.date, "combo"]).size().reset_index(name="count")
             equipment_trend["date"] = pd.to_datetime(equipment_trend["date"])
+            
             if not equipment_trend.empty:
                 fig2 = px.bar(
                     equipment_trend,
@@ -574,10 +622,27 @@ def show_dashboard():
                     title="중장비+톤 일별 스택 바 차트",
                     labels={"combo": "중장비+톤", "count": "건수", "date": "날짜"},
                 )
-                fig2.update_layout(barmode="stack", xaxis_title="date", yaxis_title="건수")
+                
+                # 기존의 여러 개로 흩어져 있던 update_layout 설정을 하나로 결합하고 줌 고정 속성을 주입했습니다.
                 update_date_axis(fig2, plot_start, plot_end)
-                fig2.update_layout(yaxis_autorange=True)
-                st.plotly_chart(fig2, use_container_width=True)
+                fig2.update_layout(
+                    barmode="stack",
+                    xaxis_title="date",
+                    yaxis_title="건수",
+                    yaxis_autorange=True,
+                    dragmode=False,               # 드래그 줌 금지
+                    xaxis=dict(fixedrange=True),  # X축 고정
+                    yaxis=dict(fixedrange=True),  # Y축 고정
+                    margin=dict(l=20, r=20, t=40, b=40),
+                    legend=dict(                  # 모바일 화면 대응을 위해 범례 위치 조절
+                        orientation="h",          # 가로 정렬
+                        yanchor="bottom",
+                        y=-0.3,                   # 차트 아래쪽으로 배치
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
+                st.plotly_chart(fig2, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
         else:
             equipment_df = pd.DataFrame(columns=["date", "equipment", "tons", "combo"])
 
@@ -585,7 +650,7 @@ def show_dashboard():
     if not reports.empty:
         metric_options = {
             "진척도": "진척도",
-            "총 출입 인원": "인원합계",
+            "출입 인원": "인원합계",
             "이동식 크레인": "크레인건수",
         }
         selected_metric = st.selectbox("그래프로 볼 항목", list(metric_options.keys()), index=0)
@@ -614,6 +679,9 @@ def show_dashboard():
             else:
                 time_series = pd.DataFrame(columns=["date", "factory", "크레인건수"])
 
+        # --------------------------------------------------
+        # [그래프 1] 공장별 일별 트렌드 차트
+        # --------------------------------------------------
         if not time_series.empty:
             time_series["date"] = pd.to_datetime(time_series["date"])
             fig_summary = px.line(
@@ -624,15 +692,27 @@ def show_dashboard():
                 markers=True,
                 title=f"공장별 일별 {selected_metric}"
             )
+            
+            # [수정] 여러 줄로 흩어진 요소를 결합하고 모바일 줌 잠금 주입
+            update_date_axis(fig_summary, start_date, end_date)
             fig_summary.update_layout(
                 xaxis_title="date",
                 yaxis_title=selected_metric,
-                legend_title_text="공장",
                 hovermode="x unified",
-                margin=dict(t=50, l=20, r=20, b=20),
+                dragmode=False,                  # 드래그 줌 금지
+                xaxis=dict(fixedrange=True),     # X축 스케일 고정 (웹 브라우저 스크롤 허용)
+                yaxis=dict(fixedrange=True),     # Y축 스케일 고정
+                margin=dict(t=50, l=20, r=20, b=40),
+                legend=dict(                     # 💡 범례가 우측을 가리지 않도록 차트 하단 가로 배치
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.3,
+                    xanchor="center",
+                    x=0.5,
+                    title_text=""                # 모바일 화면 확보를 위해 '공장' 타이틀 생략
+                )
             )
-            update_date_axis(fig_summary, start_date, end_date)
-            st.plotly_chart(fig_summary, use_container_width=True)
+            st.plotly_chart(fig_summary, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
         else:
             st.info("선택한 기간에 해당하는 데이터를 찾을 수 없습니다.")
 
@@ -643,6 +723,9 @@ def show_dashboard():
         start_time_series["start_hour"] = start_time_series["start_time_parsed"].dt.hour + start_time_series["start_time_parsed"].dt.minute / 60
         start_time_series = start_time_series[(start_time_series["start_hour"] >= 7) & (start_time_series["start_hour"] <= 11)]
 
+        # --------------------------------------------------
+        # [그래프 2] 시작 시간 정규 분포 곡선
+        # --------------------------------------------------
         if not start_time_series.empty:
             x_values = np.linspace(6, 12, 121)
             dist_fig = go.Figure()
@@ -668,16 +751,27 @@ def show_dashboard():
                         line=dict(width=2)
                     )
                 )
+                
+            # [수정] 모바일 드래그 프리징 현상 방지 패치 및 하단 스택 정렬
             dist_fig.update_layout(
                 title="공장별 작업 시작 시간 정규 분포 (07-11시)",
                 xaxis_title="작업 시작 시간",
                 yaxis_title="비율 (%)",
-                xaxis=dict(range=[6, 12], dtick=1),
-                legend_title_text="공장",
+                xaxis=dict(range=[6, 12], dtick=1, fixedrange=True), # 줌 잠금
+                yaxis=dict(fixedrange=True),                          # 줌 잠금
+                dragmode=False,
                 template="plotly_white",
-                margin=dict(t=50, l=20, r=20, b=20),
+                margin=dict(t=50, l=20, r=20, b=40),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.4,                                           # 통계 텍스트가 기므로 여백을 조금 더 하단으로 배치
+                    xanchor="center",
+                    x=0.5,
+                    title_text=""
+                )
             )
-            st.plotly_chart(dist_fig, use_container_width=True)
+            st.plotly_chart(dist_fig, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
         else:
             st.info("07시~11시 구간의 시작 시간 데이터가 부족하여 분포를 생성할 수 없습니다.")
 
@@ -685,7 +779,6 @@ def show_dashboard():
             진척도=("progress", "mean"),
             인원합계=("personnel", "sum")
         ).reset_index()
-        #st.dataframe(factory_summary.style.format({"진척도": "{:.1f}"}), use_container_width=True)
     else:
         st.write("선택한 기간에 해당하는 보고 데이터가 없습니다.")
 
