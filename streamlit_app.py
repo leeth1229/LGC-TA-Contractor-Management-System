@@ -49,37 +49,7 @@ TARGET_IMAGE_SIZE = 2 * 1024 * 1024
 MIN_JPEG_QUALITY = 60
 QUALITY_STEP = 5
 
-SAMPLE_REPORTS = [
-    # {
-    #     "date": "2026-06-02",
-    #     "factory": "NCC",
-    #     "company": "협력사 A",
-    #     "task": "배관 보수",
-    #     "work_order": "WO-1001",
-    #     "personnel": 12,
-    #     "entry_status": "정상 출입",
-    #     "equipment": "카고, 크레인",
-    #     "end_time": "17:30",
-    #     "progress": 65,
-    #     "notes": "금일 배관 연결 작업 진행, 현장 안전 점검 완료.",
-    #     "images": ""
-    # },
-    # {
-    #     "date": "2026-06-02",
-    #     "factory": "OXO",
-    #     "company": "협력사 B",
-    #     "task": "전기 공사",
-    #     "work_order": "WO-2002",
-    #     "personnel": 8,
-    #     "entry_status": "정상 출입",
-    #     "equipment": "지게차",
-    #     "start_time": "09:00",
-    #     "end_time": "16:30",
-    #     "progress": 45,
-    #     "notes": "배전반 설치 중, 전력 차단 예정.",
-    #     "images": ""
-    # },
-]
+SAMPLE_REPORTS = []
 
 SAMPLE_ANNOUNCEMENTS = []
 
@@ -834,9 +804,9 @@ def show_daily_report():
         st.subheader("기본 등록")
         report_date = st.date_input("작업일", value=datetime.today())
         if st.session_state.login_type == "협력사":
-            factory = st.selectbox("공장", [default_factory])
-            company = st.selectbox("협력사", [default_company])
-            construction_name = st.text_input("공사명", value=default_construction)
+            factory = st.selectbox("공장", [default_factory], disabled=True)
+            company = st.selectbox("협력사", [default_company], disabled=True)
+            construction_name = st.text_input("공사명", value=default_construction, disabled=True)
             project_name = st.text_input("작업명", value="작업명 입력")
         else:
             factory = st.selectbox("공장", FACTORIES, index=0)
@@ -920,8 +890,117 @@ def show_daily_report():
             st.success("아침 기본 보고가 등록되었습니다.")
 
     st.markdown("---")
-    st.subheader("수정 정보 등록")
+    # st.subheader("수정 정보 등록")
 
+    # filtered_reports = st.session_state.daily_reports
+    # if st.session_state.login_type == "협력사":
+    #     filtered_reports = filtered_reports[filtered_reports["company"] == st.session_state.user]
+
+    # if filtered_reports.empty:
+    #     st.write("등록된 일일 보고가 없습니다. 먼저 아침 기본 보고를 등록해주세요.")
+    # else:
+    #     update_reports = filtered_reports.sort_values(by=["date", "factory"], ascending=[False, True]).reset_index().rename(columns={"index": "report_id"})
+    #     update_reports["date"] = pd.to_datetime(update_reports["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    #     update_options = [
+    #         f"{int(row['report_id'])} | {row['date']} / {row['company']} / {row['task']} / {row['work_order']}"
+    #         for _, row in update_reports.iterrows()
+    #     ]
+    #     selected_report = st.selectbox("수정할 보고를 선택하세요", update_options, key="update_report_select")
+    #     selected_id = int(selected_report.split(" | ")[0])
+    #     report_row = filtered_reports.loc[selected_id]
+
+    #     with st.form(key="daily_report_update_form"):
+    #         st.write("기존 오전 입력 정보는 수정할 수 없으며, 추가/마감 정보를 등록합니다.")
+    #         with st.expander("기존 입력 정보 보기", expanded=False):
+    #             st.text_input("작업일", value=report_row["date"], disabled=True)
+    #             st.text_input("공장", value=report_row["factory"], disabled=True)
+    #             st.text_input("협력사", value=report_row["company"], disabled=True)
+    #             st.text_input("공사명", value=report_row["task"], disabled=True)
+    #             st.text_input("작업명", value=report_row["work_order"], disabled=True)
+    #             st.text_input("출입인원", value=str(report_row["personnel"]), disabled=True)
+    #             st.text_input("중장비", value=report_row["equipment"], disabled=True)
+    #             st.text_input("톤수", value=str(report_row.get("tons", "")), disabled=True)
+    #         raw_start_time = report_row.get("start_time")
+    #         if pd.isna(raw_start_time) or str(raw_start_time).strip().lower() == "nan" or str(raw_start_time).strip() == "":
+    #             raw_start_time = "08:00"
+    #         raw_end_time = report_row.get("end_time")
+    #         if pd.isna(raw_end_time) or str(raw_end_time).strip().lower() == "nan" or str(raw_end_time).strip() == "":
+    #             raw_end_time = "17:00"
+    #         start_time_value = datetime.strptime(str(raw_start_time), "%H:%M").time()
+    #         end_time_value = datetime.strptime(str(raw_end_time), "%H:%M").time()
+    #         start_time = st.time_input("작업 시작시간", value=start_time_value, step=300)
+    #         end_time = st.time_input("작업 종료시간", value=end_time_value, step=300)
+    #         progress = st.slider("작업 진척도", min_value=0, max_value=100, value=int(report_row.get("progress") or 0), step=1)
+    #         notes = st.text_area("금일 작업 사항", value=str(report_row.get("notes", "")), height=120)
+    #         uploaded_files = st.file_uploader("작업 사진 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+    #         update_submit = st.form_submit_button("수정 저장")
+
+    #         if update_submit:
+    #             if uploaded_files:
+    #                 image_names = []
+    #                 save_dir = DAILY_IMAGE_DIR / report_row["date"] / sanitize_text(report_row["company"])
+    #                 for file in uploaded_files:
+    #                     saved_name = save_uploaded_file(file, save_dir)
+    #                     image_names.append(saved_name)
+    #                 existing_images = [n.strip() for n in str(report_row.get("images", "")).split(",") if n.strip()]
+    #                 all_images = existing_images + image_names
+    #                 st.session_state.daily_reports.at[selected_id, "images"] = ", ".join(all_images)
+    #                 st.session_state.daily_reports.at[selected_id, "start_time"] = start_time.strftime("%H:%M")
+    #                 st.session_state.daily_reports.at[selected_id, "end_time"] = end_time.strftime("%H:%M")
+    #                 st.session_state.daily_reports.at[selected_id, "progress"] = int(progress)
+    #                 st.session_state.daily_reports.at[selected_id, "notes"] = notes
+    #                 save_daily_reports()
+    #                 st.success("일일 보고 추가/수정 정보가 저장되었습니다.")
+    #                 st.rerun()
+
+    #     st.markdown("---")
+    #     st.subheader("최근 등록된 일일 보고")
+    #     display_reports = update_reports.copy()
+    #     display_reports["date"] = pd.to_datetime(display_reports["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+    #     display_reports = display_reports.drop(columns=["images", "tons"], errors="ignore").rename(columns={
+    #         "date": "날짜",
+    #         "factory": "공장",
+    #         "company": "협력사",
+    #         "task": "공사명",
+    #         "work_order": "작업명",
+    #         "personnel": "출입인원",
+    #         "entry_status": "작업현황",
+    #         "equipment": "중장비 현황",
+    #         "start_time": "시작시간",
+    #         "end_time": "종료시간",
+    #         "progress": "진척도",
+    #         "notes": "작업사항",
+    #     })
+    #     st.dataframe(display_reports.reset_index(drop=True), use_container_width=True)
+
+    #     st.subheader("사진 보기")
+    #     for _, row in update_reports.iterrows():
+    #         image_paths = get_report_image_paths(row)
+    #         if image_paths:
+    #             with st.expander(f"{row['date']} / {row['company']} / {row['task']} - 이미지 보기", expanded=False):
+    #                 st.write(f"총 {len(image_paths)}장")
+    #                 cols = st.columns(min(len(image_paths), 4))
+    #                 for idx, image_path in enumerate(image_paths):
+    #                     col = cols[idx % len(cols)]
+    #                     try:
+    #                         col.image(image_path, use_column_width=True)
+    #                     except Exception:
+    #                         col.write(f"이미지를 로드할 수 없습니다: {image_path}")
+
+    #     st.markdown("---")
+    #     st.subheader("잘못 등록한 보고 삭제")
+    #     delete_options = [
+    #         f"{int(row['report_id'])} | {row['날짜']} / {row['협력사']} / {row['작업명']} / {row['공장']}"
+    #         for _, row in display_reports.iterrows()
+    #     ]
+    #     selected_delete = st.selectbox("삭제할 보고를 선택하세요", delete_options, key="delete_report_select")
+    #     selected_id = int(selected_delete.split(" | ")[0])
+    #     if st.button("선택한 보고 삭제"):
+    #         st.session_state.daily_reports = st.session_state.daily_reports.drop(index=selected_id).reset_index(drop=True)
+    #         save_daily_reports()
+    #         st.success("선택한 일일 보고가 삭제되었습니다. 필요하면 다시 등록하세요.")
+    
+    st.subheader("수정 정보 등록")
     filtered_reports = st.session_state.daily_reports
     if st.session_state.login_type == "협력사":
         filtered_reports = filtered_reports[filtered_reports["company"] == st.session_state.user]
@@ -929,8 +1008,12 @@ def show_daily_report():
     if filtered_reports.empty:
         st.write("등록된 일일 보고가 없습니다. 먼저 아침 기본 보고를 등록해주세요.")
     else:
-        update_reports = filtered_reports.sort_values(by=["date", "factory"], ascending=[False, True]).reset_index().rename(columns={"index": "report_id"})
+        # ⚠️ 중요: Loc 접근 시 정적 인덱스를 안전하게 매핑하기 위해 reset_index()를 사용하되 본래 index를 유지합니다.
+        update_reports = filtered_reports.copy()
+        update_reports["report_id"] = update_reports.index
+        update_reports = update_reports.sort_values(by=["date", "factory"], ascending=[False, True])
         update_reports["date"] = pd.to_datetime(update_reports["date"], errors="coerce").dt.strftime("%Y-%m-%d")
+        
         update_options = [
             f"{int(row['report_id'])} | {row['date']} / {row['company']} / {row['task']} / {row['work_order']}"
             for _, row in update_reports.iterrows()
@@ -938,56 +1021,86 @@ def show_daily_report():
         selected_report = st.selectbox("수정할 보고를 선택하세요", update_options, key="update_report_select")
         selected_id = int(selected_report.split(" | ")[0])
         report_row = filtered_reports.loc[selected_id]
-
+        st.write("👆 **상단에서 수정할 작업 일보를 먼저 선택해 주세요.** 자동으로 해당 데이터가 불러와지며 추가 및 마감 정보를 편리하게 등록하실 수 있습니다.")
         with st.form(key="daily_report_update_form"):
-            st.write("기존 오전 입력 정보는 수정할 수 없으며, 추가/마감 정보를 등록합니다.")
-            with st.expander("기존 입력 정보 보기", expanded=False):
-                st.text_input("작업일", value=report_row["date"], disabled=True)
-                st.text_input("공장", value=report_row["factory"], disabled=True)
-                st.text_input("협력사", value=report_row["company"], disabled=True)
-                st.text_input("공사명", value=report_row["task"], disabled=True)
-                st.text_input("작업명", value=report_row["work_order"], disabled=True)
-                st.text_input("출입인원", value=str(report_row["personnel"]), disabled=True)
-                st.text_input("중장비", value=report_row["equipment"], disabled=True)
-                st.text_input("톤수", value=str(report_row.get("tons", "")), disabled=True)
+            
+            # with st.expander("기존 입력 정보 보기", expanded=False):
+            #     st.text_input("작업일", value=report_row["date"], disabled=True)
+            #     st.text_input("공장", value=report_row["factory"], disabled=True)
+            #     st.text_input("협력사", value=report_row["company"], disabled=True)
+            #     st.text_input("공사명", value=report_row["task"], disabled=True)
+            #     st.text_input("작업명", value=report_row["work_order"], disabled=True)
+            #     st.text_input("출입인원", value=str(report_row["personnel"]), disabled=True)
+            #     st.text_input("중장비", value=report_row["equipment"], disabled=True)
+            #     st.text_input("톤수", value=str(report_row.get("tons", "")), disabled=True)
+                
             raw_start_time = report_row.get("start_time")
             if pd.isna(raw_start_time) or str(raw_start_time).strip().lower() == "nan" or str(raw_start_time).strip() == "":
                 raw_start_time = "08:00"
             raw_end_time = report_row.get("end_time")
             if pd.isna(raw_end_time) or str(raw_end_time).strip().lower() == "nan" or str(raw_end_time).strip() == "":
                 raw_end_time = "17:00"
+                
             start_time_value = datetime.strptime(str(raw_start_time), "%H:%M").time()
             end_time_value = datetime.strptime(str(raw_end_time), "%H:%M").time()
             start_time = st.time_input("작업 시작시간", value=start_time_value, step=300)
             end_time = st.time_input("작업 종료시간", value=end_time_value, step=300)
-            progress = st.slider("작업 진척도", min_value=0, max_value=100, value=int(report_row.get("progress") or 0), step=1)
-            notes = st.text_area("금일 작업 사항", value=str(report_row.get("notes", "")), height=120)
-            uploaded_files = st.file_uploader("작업 사진 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            st.write("💡 **작업 시작/종료를 입력해 주세요.** 입력하신 시간을 바탕으로 아침 작업 발행 순서를 조율이 가능합니다.")
+            progress = st.slider("**작업 진척도**", min_value=0, max_value=100, value=int(report_row.get("progress") or 0), step=1)
+            st.write("📊**진척도 반영**: 오늘 작업이 완료된 만큼 슬라이더를 움직여 주세요.")
+            notes = st.text_area("금일 작업 사항", value=str(report_row.get("notes", "")), height=120, placeholder=(
+            "- NCC Cracking 배관 용접 및 비파괴 검사 완료\n"
+            "- GB-120 내부 클리닝 및 O/H 가스켓 교체\n"
+            "- 현장 정리정돈 및 안전 점검 이상 없음"
+            ))
+            uploaded_files = st.file_uploader("작업 사진 업로드 (선택사항)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            
             update_submit = st.form_submit_button("수정 저장")
 
             if update_submit:
+                # 1. 일반 텍스트 데이터 업데이트
+                st.session_state.daily_reports.at[selected_id, "start_time"] = start_time.strftime("%H:%M")
+                st.session_state.daily_reports.at[selected_id, "end_time"] = end_time.strftime("%H:%M")
+                st.session_state.daily_reports.at[selected_id, "progress"] = int(progress)
+                st.session_state.daily_reports.at[selected_id, "notes"] = notes
+                
+                # 2. 이미지 처리 (새로 올릴 때만 기존 물리 파일 삭제)
                 if uploaded_files:
-                    image_names = []
                     save_dir = DAILY_IMAGE_DIR / report_row["date"] / sanitize_text(report_row["company"])
+                    
+                    # [추가] 덮어쓰기 전 기존 물리 파일 삭제 로직
+                    old_images_raw = str(report_row.get("images", "")).split(",")
+                    for old_img in old_images_raw:
+                        old_img_name = old_img.strip()
+                        if old_img_name:
+                            old_file_path = save_dir / old_img_name
+                            if old_file_path.exists():
+                                try:
+                                    old_file_path.unlink()  # 실제 파일 삭제
+                                except Exception:
+                                    pass # 파일이 이미 없거나 권한 에러 시 무시
+                    
+                    # 새 이미지 리사이즈 및 저장
+                    image_names = []
                     for file in uploaded_files:
                         saved_name = save_uploaded_file(file, save_dir)
                         image_names.append(saved_name)
-                    existing_images = [n.strip() for n in str(report_row.get("images", "")).split(",") if n.strip()]
-                    all_images = existing_images + image_names
-                    st.session_state.daily_reports.at[selected_id, "images"] = ", ".join(all_images)
-                    st.session_state.daily_reports.at[selected_id, "start_time"] = start_time.strftime("%H:%M")
-                    st.session_state.daily_reports.at[selected_id, "end_time"] = end_time.strftime("%H:%M")
-                    st.session_state.daily_reports.at[selected_id, "progress"] = int(progress)
-                    st.session_state.daily_reports.at[selected_id, "notes"] = notes
-                    save_daily_reports()
-                    st.success("일일 보고 추가/수정 정보가 저장되었습니다.")
-                    st.rerun()
+                    
+                    # 새 목록으로 완전 대체
+                    st.session_state.daily_reports.at[selected_id, "images"] = ", ".join(image_names)
+                
+                # 3. CSV 저장 후 즉시 리런
+                save_daily_reports()
+                st.success("일일 보고 추가/수정 정보가 저장되었습니다.")
+                st.rerun()
 
         st.markdown("---")
         st.subheader("최근 등록된 일일 보고")
         display_reports = update_reports.copy()
         display_reports["date"] = pd.to_datetime(display_reports["date"], errors="coerce").dt.strftime("%Y-%m-%d")
-        display_reports = display_reports.drop(columns=["images", "tons"], errors="ignore").rename(columns={
+        
+        # 데이터프레임 매핑 시 복사본을 정제하여 화면 출력 오류 방지
+        display_reports = display_reports.drop(columns=["images", "tons", "report_id"], errors="ignore").rename(columns={
             "date": "날짜",
             "factory": "공장",
             "company": "협력사",
@@ -1020,16 +1133,35 @@ def show_daily_report():
         st.markdown("---")
         st.subheader("잘못 등록한 보고 삭제")
         delete_options = [
-            f"{int(row['report_id'])} | {row['날짜']} / {row['협력사']} / {row['작업명']} / {row['공장']}"
-            for _, row in display_reports.iterrows()
+            f"{int(row['report_id'])} | {row['date']} / {row['company']} / {row['work_order']} / {row['factory']}"
+            for _, row in update_reports.iterrows()
         ]
         selected_delete = st.selectbox("삭제할 보고를 선택하세요", delete_options, key="delete_report_select")
         selected_id = int(selected_delete.split(" | ")[0])
+        
         if st.button("선택한 보고 삭제"):
+            # 삭제 대상 행 데이터 추출
+            target_row = st.session_state.daily_reports.loc[selected_id]
+            
+            # [추가] 삭제 대상 보고에 연결된 실제 물리 이미지 파일 전부 삭제
+            if "images" in target_row and str(target_row["images"]).strip():
+                del_dir = DAILY_IMAGE_DIR / target_row["date"] / sanitize_text(target_row["company"])
+                del_images_raw = str(target_row["images"]).split(",")
+                for del_img in del_images_raw:
+                    del_img_name = del_img.strip()
+                    if del_img_name:
+                        del_file_path = del_dir / del_img_name
+                        if del_file_path.exists():
+                            try:
+                                del_file_path.unlink()  # 실제 파일 제거
+                            except Exception:
+                                pass
+                                
+            # 데이터프레임에서 행 제외 후 인덱스 재정렬
             st.session_state.daily_reports = st.session_state.daily_reports.drop(index=selected_id).reset_index(drop=True)
             save_daily_reports()
-            st.success("선택한 일일 보고가 삭제되었습니다. 필요하면 다시 등록하세요.")
-
+            st.success("선택한 일일 보고와 저장된 이미지 파일이 완전히 삭제되었습니다.")
+            st.rerun()
 
 def show_announcements():
     st.title("공지사항")
@@ -1042,7 +1174,7 @@ def show_announcements():
             ann_date = st.date_input("공지일", value=datetime.today())
             ann_title = st.text_input("제목")
             ann_content = st.text_area("내용", height=140)
-            ann_images = st.file_uploader("공지 이미지 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            ann_images = st.file_uploader("공지 이미지 업로드 (선택사항)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
             ann_submit = st.form_submit_button("등록")
 
             if ann_submit:
@@ -1065,11 +1197,17 @@ def show_announcements():
                     st.session_state.announcements = pd.concat([st.session_state.announcements, pd.DataFrame([new_ann])], ignore_index=True)
                     save_announcements()
                     st.success("공지사항이 등록되었습니다.")
+                    st.rerun()  # 💡 [추가] 등록 즉시 공지 목록 갱신 리런
 
     st.markdown("---")
     st.subheader("공지 목록")
-    ann_df = st.session_state.announcements.sort_values(by="date", ascending=False).reset_index(drop=True)
-    for idx, row in ann_df.iterrows():
+    
+    # ⚠️ 원본 인덱스가 흐트러져 엉뚱한 기업의 파일이 지워지는 사고를 완벽히 차단합니다.
+    display_ann = st.session_state.announcements.copy()
+    display_ann["ann_id"] = display_ann.index
+    display_ann = display_ann.sort_values(by="date", ascending=False)
+    
+    for _, row in display_ann.iterrows():
         st.write(f"**{row['date']} - {row['title']}**")
         st.write(row["content"])
         if row.get("images"):
@@ -1078,19 +1216,48 @@ def show_announcements():
             image_paths = [str(ann_dir / name) for name in image_names if (ann_dir / name).exists()]
             if image_paths:
                 st.image(image_paths, width=250)
-            else:
-                st.write(f"첨부 이미지: {row['images']}")
         st.write("---")
 
-    if st.session_state.login_type != "협력사" and not ann_df.empty:
+    if st.session_state.login_type != "협력사" and not display_ann.empty:
         st.subheader("잘못 등록된 공지 삭제")
-        delete_options = [f"{idx} | {row['date']} / {row['title']}" for idx, row in ann_df.iterrows()]
+        
+        delete_options = [
+            f"{int(row['ann_id'])} | {row['date']} / {row['title']}" 
+            for _, row in display_ann.iterrows()
+        ]
         selected_delete = st.selectbox("삭제할 공지를 선택하세요", delete_options, key="delete_announcement_select")
         selected_id = int(selected_delete.split(" | ")[0])
+        
         if st.button("선택한 공지 삭제"):
+            # 1. 원본 데이터프레임에서 삭제 대상 데이터 추출
+            target_row = st.session_state.announcements.loc[selected_id]
+            
+            # 2. 💡 [추가] 해당 공지에 첨부된 실제 서버 디렉토리 내의 물리 파일 추적 삭제
+            if "images" in target_row and str(target_row["images"]).strip():
+                del_dir = ANNOUNCEMENT_IMAGE_DIR / target_row["date"] / sanitize_text(target_row["title"])
+                del_images_raw = str(target_row["images"]).split(",")
+                for del_img in del_images_raw:
+                    del_img_name = del_img.strip()
+                    if del_img_name:
+                        del_file_path = del_dir / del_img_name
+                        if del_file_path.exists():
+                            try:
+                                del_file_path.unlink()  # 하드디스크 내부 파일 완전 제거
+                            except Exception:
+                                pass # 에러로 인한 시스템 중단 방지
+                
+                # 3. 💡 [추가 기능] 공지용 전용 하위 폴더가 완전히 비어있다면 폴더까지 깔끔하게 자동 청소
+                try:
+                    if del_dir.exists() and not any(del_dir.iterdir()):
+                        del_dir.rmdir()
+                except Exception:
+                    pass
+
+            # 4. 데이터프레임 행 제거 및 영구 저장용 파일 업데이트
             st.session_state.announcements = st.session_state.announcements.drop(index=selected_id).reset_index(drop=True)
             save_announcements()
-            st.success("선택한 공지가 삭제되었습니다.")
+            st.success("선택한 공지 데이터 및 첨부 이미지 파일이 시스템에서 완전히 삭제되었습니다.")
+            st.rerun()  # 💡 [추가] 삭제 즉시 목록 갱신 리런
 
 
 def show_evaluation():
@@ -1098,8 +1265,7 @@ def show_evaluation():
     st.write("작업 업체에 대한 우수 평가, 경고, 마일리지 관리를 할 수 있습니다.")
 
     if st.session_state.login_type == "협력사":
-        st.info("협력사는 평가 및 마일리지 등록을 할 수 없습니다.")
-        st.warning("경고가 누적 3회 이상 시, unsafety가 발생될 수 있음을 인지하시기 바랍니다.")
+        st.info("💡 **협력사 안내 사항**\n\n* 협력사 계정은 평가 및 마일리지를 직접 등록할 수 없습니다.\n* **안전 유의**: 경고가 누적 3회 이상 발생 시, 현장 안전 조치(Unsafety) 및 출입 제한 등이 발생할 수 있으므로 각별히 인지하시기 바랍니다.")
     else:
         eval_type = st.radio(
             "구분",
@@ -1114,7 +1280,7 @@ def show_evaluation():
             eval_reason = st.text_area(
                 "마일리지 / 경고, 사유",
                 height=120,
-                placeholder="위반 또는 부여 점수, 사유, 영향 등을 구체적으로 작성해주세요.",
+                placeholder="위반 항목 또는 마일리지 점수 부여 사유와 현장 영향성 등을 구체적으로 작성해 주세요.",
             )
             if eval_type == "경고":
                 warning_count = 1
@@ -1128,7 +1294,7 @@ def show_evaluation():
                     value=0,
                     key="eval_mileage",
                 )
-            eval_images = st.file_uploader("평가 이미지 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            eval_images = st.file_uploader("평가 이미지 업로드 (선택사항)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
             eval_submit = st.form_submit_button("저장")
 
             if eval_submit:
@@ -1155,12 +1321,14 @@ def show_evaluation():
                     st.session_state.evaluations = pd.concat([st.session_state.evaluations, pd.DataFrame([new_eval])], ignore_index=True)
                     save_evaluations()
                     st.success("평가가 저장되었습니다.")
+                    st.rerun()  # 💡 [추가] 저장 즉시 대시보드 리프레시 반영
 
     st.markdown("---")
     st.subheader("협력사별 누적 평가 / 마일리지")
     eval_df = st.session_state.evaluations.copy()
     if not eval_df.empty:
-        eval_df["date"] = pd.to_datetime(eval_df["date"])
+        # 안전한 집계를 위해 사본의 인덱스를 보존하고 정제 진행
+        eval_df["eval_id"] = eval_df.index
         company_summary = eval_df.groupby("company").agg(
             경고누계=("warning_count", "sum"),
             마일리지누계=("mileage", "sum")
@@ -1169,8 +1337,13 @@ def show_evaluation():
 
     st.markdown("---")
     st.subheader("최근 평가 / 경고 현황")
-    eval_df = st.session_state.evaluations.sort_values(by="date", ascending=False).reset_index().rename(columns={"index": "eval_id"})
-    for _, row in eval_df.iterrows():
+    
+    # ⚠️ 인덱스가 꼬여 엉뚱한 파일이 지워지는 문제를 완벽 차단하기 위해 원본 고유 index 유지
+    display_eval = st.session_state.evaluations.copy()
+    display_eval["eval_id"] = display_eval.index
+    display_eval = display_eval.sort_values(by="date", ascending=False)
+    
+    for _, row in display_eval.iterrows():
         row_date = row["date"].strftime("%Y-%m-%d") if isinstance(row["date"], pd.Timestamp) else str(row["date"])
         image_names = [n.strip() for n in str(row.get("images", "")).split(",") if n.strip()]
         eval_dir = EVALUATION_IMAGE_DIR / row_date / sanitize_text(row["company"])
@@ -1182,21 +1355,41 @@ def show_evaluation():
             st.image(image_paths, width=250)
         st.write("---")
 
-    if not eval_df.empty and st.session_state.login_type == "LG.C":
+    if not display_eval.empty and st.session_state.login_type == "LG.C":
         st.markdown("---")
         st.subheader("잘못 등록된 평가 삭제")
         delete_options = []
-        for _, row in eval_df.iterrows():
+        for _, row in display_eval.iterrows():
             row_date = row["date"].strftime("%Y-%m-%d") if isinstance(row["date"], pd.Timestamp) else str(row["date"])
             delete_options.append(f"{int(row['eval_id'])} | {row_date} / {row['company']} / {row['type']}")
 
         selected_delete = st.selectbox("삭제할 평가를 선택하세요", delete_options, key="delete_evaluation_select")
         selected_id = int(selected_delete.split(" | ")[0])
+        
         if st.button("선택한 평가 삭제"):
+            # 1. 삭제할 원본 대상 행 추출
+            target_row = st.session_state.evaluations.loc[selected_id]
+            target_date = target_row["date"].strftime("%Y-%m-%d") if isinstance(target_row["date"], pd.Timestamp) else str(target_row["date"])
+            
+            # 2. 💡 [추가] 해당 평가건에 등록되었던 서버 내 실제 물리 이미지 파일 자동 완전 추적 삭제
+            if "images" in target_row and str(target_row["images"]).strip():
+                del_dir = EVALUATION_IMAGE_DIR / target_date / sanitize_text(target_row["company"])
+                del_images_raw = str(target_row["images"]).split(",")
+                for del_img in del_images_raw:
+                    del_img_name = del_img.strip()
+                    if del_img_name:
+                        del_file_path = del_dir / del_img_name
+                        if del_file_path.exists():
+                            try:
+                                del_file_path.unlink()  # 하드디스크에서 파일 삭제
+                            except Exception:
+                                pass # 열려있는 파일 등 예외 발생 시 크래시 방지
+            
+            # 3. 데이터프레임 행 삭제 및 영구 보관용 CSV 갱신
             st.session_state.evaluations = st.session_state.evaluations.drop(index=selected_id).reset_index(drop=True)
             save_evaluations()
-            st.success("선택한 평가가 삭제되었습니다.")
-
+            st.success("선택한 평가 데이터 및 실제 이미지 파일이 디스크에서 완전히 삭제되었습니다.")
+            st.rerun()  # 💡 [추가] 즉시 대시보드 리프레시 반영
 
 def show_settings():
     st.title("관리자 설정")
