@@ -487,7 +487,7 @@ def show_dashboard():
     col5.metric("총 출입 중장비 대수", equipment_count)
     col6.metric("평균 시작/종료", f"{avg_start} / {avg_end}")
 
-    st.subheader("공장별 일일 보고 현황")
+    # st.subheader("공장별 일일 보고 현황")
     if reports.empty:
         st.info("등록된 작업이 없습니다. 공장 또는 기간 선택을 확인해 주세요.")
     else:
@@ -505,7 +505,7 @@ def show_dashboard():
             "progress": "진척도",
             "notes": "작업사항",
         })
-        st.dataframe(report_display.reset_index(drop=True), use_container_width=True)
+        # st.dataframe(report_display.reset_index(drop=True), use_container_width=True)
 
     if not reports.empty:
         plot_start = pd.to_datetime(start_date)
@@ -658,7 +658,7 @@ def show_dashboard():
         if selected_metric == "진척도":
             time_series = reports.groupby([reports["date"].dt.date, "factory"]).agg({"progress": "mean"}).reset_index()
             time_series = time_series.rename(columns={"progress": "진척도"})
-        elif selected_metric == "총 출입 인원":
+        elif selected_metric == "출입 인원":
             time_series = reports.groupby([reports["date"].dt.date, "factory"]).agg({"personnel": "sum"}).reset_index()
             time_series = time_series.rename(columns={"personnel": "인원합계"})
         else:
@@ -716,7 +716,7 @@ def show_dashboard():
         else:
             st.info("선택한 기간에 해당하는 데이터를 찾을 수 없습니다.")
 
-        st.subheader("공장별 작업 시작 시간 정규 분포")
+        st.subheader("공장별 시작시간 분포")
         start_time_series = reports.copy()
         start_time_series["start_time_parsed"] = pd.to_datetime(start_time_series["start_time"], format="%H:%M", errors="coerce")
         start_time_series = start_time_series[start_time_series["start_time_parsed"].notna()]

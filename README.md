@@ -1,4 +1,4 @@
-![Open in Streamlit](lgc-ta-contractor-management-system-oqh6fn5lr98n5rah37hnkz.streamlit.app)
+lgc-ta-contractor-management-system-oqh6fn5lr98n5rah37hnkz.streamlit.app
 
 🎈 LGC TA 협력사 관리 시스템
 LG화학 TA(Turn Around) 기간 중 협력사 작업 현황, 인원, 중장비 사용 현황을 통합 관리하기 위한 웹 기반 시스템입니다.
