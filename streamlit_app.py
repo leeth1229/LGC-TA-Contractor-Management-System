@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+from io import BytesIO
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -9,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime, date
+from PIL import Image, UnidentifiedImageError
 
 st.set_page_config(page_title="TA 협력사 관리", layout="wide")
 
@@ -16,7 +18,18 @@ FACTORIES = ["NCC", "OXO", "IPA2", "IPA3", "3AA", "BDBTX", "BPA", "HDPE", "NPG",
 
 import streamlit as st
 
-LG_CREDENTIALS = st.secrets["LG_CREDENTIALS"]
+try:
+    _streamlit_secrets = dict(st.secrets)
+except Exception:
+    _streamlit_secrets = {}
+
+LG_CREDENTIALS = _streamlit_secrets.get("LG_CREDENTIALS", {})
+ADMIN_PASSWORD = _streamlit_secrets.get("ADMIN_PASSWORD", "") or LG_CREDENTIALS.get("ADMIN_PASSWORD", "")
+
+# If ADMIN_PASSWORD was accidentally placed in the LG_CREDENTIALS section,
+# keep it usable while preserving the actual login credentials.
+if isinstance(LG_CREDENTIALS, dict) and "ADMIN_PASSWORD" in LG_CREDENTIALS:
+    LG_CREDENTIALS = {k: v for k, v in LG_CREDENTIALS.items() if k != "ADMIN_PASSWORD"}
 
 CONTRACTORS = [
     {"name": "대아", "factory": "NCC", "order": "NCC Cracking H/T 보수"},
@@ -31,7 +44,10 @@ DAILY_IMAGE_DIR = DATA_DIR / "daily_images"
 ANNOUNCEMENT_IMAGE_DIR = DATA_DIR / "announcement_images"
 EVALUATION_IMAGE_DIR = DATA_DIR / "evaluation_images"
 SETTINGS_FILE = DATA_DIR / "settings.json"
-MAX_IMAGE_SIZE = 3 * 1024 * 1024  # 3MB
+MAX_IMAGE_DIMENSION = 1200
+TARGET_IMAGE_SIZE = 2 * 1024 * 1024
+MIN_JPEG_QUALITY = 60
+QUALITY_STEP = 5
 
 SAMPLE_REPORTS = [
     # {
@@ -112,12 +128,101 @@ ANNOUNCEMENTS_FILE = DATA_DIR / "announcements.csv"
 EVALUATIONS_FILE = DATA_DIR / "evaluations.csv"
 
 
+def _jpeg_bytes(img: Image.Image, quality: int) -> bytes:
+    output = BytesIO()
+    img.save(output, format="JPEG", quality=quality, optimize=True)
+    return output.getvalue()
+
+
+def _png_bytes(img: Image.Image) -> bytes:
+    output = BytesIO()
+    img.save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+def _png_to_jpeg(img: Image.Image) -> Image.Image:
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        background.paste(img.convert("RGBA"), mask=img.convert("RGBA").split()[-1])
+        return background
+    return img.convert("RGB")
+
+
+def resize_image_bytes(file_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSION) -> bytes:
+    try:
+        with Image.open(BytesIO(file_bytes)) as img:
+            img_format = img.format or "PNG"
+            if img.width > max_dimension or img.height > max_dimension:
+                img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+
+            if img_format.upper() == "JPEG":
+                data = _jpeg_bytes(img, 85)
+            else:
+                data = _png_bytes(img)
+
+            if len(data) <= TARGET_IMAGE_SIZE:
+                return data
+
+            if img_format.upper() == "JPEG":
+                quality = 85
+                while len(data) > TARGET_IMAGE_SIZE and quality >= MIN_JPEG_QUALITY:
+                    quality -= QUALITY_STEP
+                    data = _jpeg_bytes(img, quality)
+                if len(data) <= TARGET_IMAGE_SIZE:
+                    return data
+
+            if img_format.upper() == "PNG":
+                try:
+                    quantized = img.convert("P", palette=Image.ADAPTIVE, colors=128)
+                    data = _png_bytes(quantized)
+                    if len(data) <= TARGET_IMAGE_SIZE:
+                        return data
+                except Exception:
+                    pass
+
+                try:
+                    jpeg_img = _png_to_jpeg(img)
+                    quality = 85
+                    data = _jpeg_bytes(jpeg_img, quality)
+                    while len(data) > TARGET_IMAGE_SIZE and quality >= MIN_JPEG_QUALITY:
+                        quality -= QUALITY_STEP
+                        data = _jpeg_bytes(jpeg_img, quality)
+                    if len(data) <= TARGET_IMAGE_SIZE:
+                        return data
+                except Exception:
+                    pass
+
+            downscale_factor = 0.9
+            current = img
+            while len(data) > TARGET_IMAGE_SIZE and min(current.width, current.height) > 300:
+                new_size = (max(300, int(current.width * downscale_factor)), max(300, int(current.height * downscale_factor)))
+                current = current.resize(new_size, Image.LANCZOS)
+                if img_format.upper() == "JPEG":
+                    data = _jpeg_bytes(current, max(MIN_JPEG_QUALITY, quality))
+                else:
+                    try:
+                        data = _jpeg_bytes(_png_to_jpeg(current), max(MIN_JPEG_QUALITY, quality))
+                    except Exception:
+                        data = _png_bytes(current)
+                if len(data) <= TARGET_IMAGE_SIZE:
+                    return data
+
+            return data
+    except UnidentifiedImageError:
+        return file_bytes
+    except Exception:
+        return file_bytes
+
+
 def save_uploaded_file(uploaded_file, target_dir: Path):
     target_dir.mkdir(parents=True, exist_ok=True)
     filename = sanitize_text(uploaded_file.name)
     destination = target_dir / filename
+    uploaded_file.seek(0)
+    raw_bytes = uploaded_file.read()
+    optimized_bytes = resize_image_bytes(raw_bytes)
     with destination.open("wb") as f:
-        f.write(uploaded_file.read())
+        f.write(optimized_bytes)
     return destination.name
 
 
@@ -296,6 +401,7 @@ def login_page():
             st.session_state.logged_in = True
             st.session_state.user = company
             st.session_state.logged_factory = factory
+            st.rerun()
     else:
         username = st.text_input("LG.C 사용자명", value="admin1")
         password = st.text_input("비밀번호", type="password")
@@ -305,6 +411,7 @@ def login_page():
                 st.session_state.user = username
                 st.session_state.logged_factory = FACTORIES[0]
                 st.success("LG.C 사용자로 로그인되었습니다.")
+                st.rerun()
             else:
                 st.error("LG.C 사용자명 또는 비밀번호가 올바르지 않습니다.")
 
@@ -855,26 +962,19 @@ def show_daily_report():
             end_time = st.time_input("작업 종료시간", value=end_time_value, step=300)
             progress = st.slider("작업 진척도", min_value=0, max_value=100, value=int(report_row.get("progress") or 0), step=1)
             notes = st.text_area("금일 작업 사항", value=str(report_row.get("notes", "")), height=120)
-            uploaded_files = st.file_uploader("작업 사진 업로드 (최대 3MB)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            uploaded_files = st.file_uploader("작업 사진 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
             update_submit = st.form_submit_button("수정 저장")
 
             if update_submit:
-                can_save = True
                 if uploaded_files:
-                    invalid_files = [file.name for file in uploaded_files if getattr(file, "size", 0) > MAX_IMAGE_SIZE]
-                    if invalid_files:
-                        st.error(f"다음 이미지의 크기가 3MB를 초과했습니다: {', '.join(invalid_files)}")
-                        can_save = False
-                    else:
-                        image_names = []
-                        save_dir = DAILY_IMAGE_DIR / report_row["date"] / sanitize_text(report_row["company"])
-                        for file in uploaded_files:
-                            saved_name = save_uploaded_file(file, save_dir)
-                            image_names.append(saved_name)
-                        existing_images = [n.strip() for n in str(report_row.get("images", "")).split(",") if n.strip()]
-                        all_images = existing_images + image_names
-                        st.session_state.daily_reports.at[selected_id, "images"] = ", ".join(all_images)
-                if can_save:
+                    image_names = []
+                    save_dir = DAILY_IMAGE_DIR / report_row["date"] / sanitize_text(report_row["company"])
+                    for file in uploaded_files:
+                        saved_name = save_uploaded_file(file, save_dir)
+                        image_names.append(saved_name)
+                    existing_images = [n.strip() for n in str(report_row.get("images", "")).split(",") if n.strip()]
+                    all_images = existing_images + image_names
+                    st.session_state.daily_reports.at[selected_id, "images"] = ", ".join(all_images)
                     st.session_state.daily_reports.at[selected_id, "start_time"] = start_time.strftime("%H:%M")
                     st.session_state.daily_reports.at[selected_id, "end_time"] = end_time.strftime("%H:%M")
                     st.session_state.daily_reports.at[selected_id, "progress"] = int(progress)
@@ -942,32 +1042,29 @@ def show_announcements():
             ann_date = st.date_input("공지일", value=datetime.today())
             ann_title = st.text_input("제목")
             ann_content = st.text_area("내용", height=140)
-            ann_images = st.file_uploader("공지 이미지 업로드 (최대 3MB)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            ann_images = st.file_uploader("공지 이미지 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
             ann_submit = st.form_submit_button("등록")
 
             if ann_submit:
                 if not ann_title or not ann_content:
                     st.error("제목과 내용을 모두 입력해주세요.")
                 else:
-                    invalid_files = [file.name for file in ann_images if getattr(file, "size", 0) > MAX_IMAGE_SIZE]
-                    if invalid_files:
-                        st.error(f"다음 이미지의 크기가 3MB를 초과했습니다: {', '.join(invalid_files)}")
-                    else:
-                        image_names = []
-                        if ann_images:
-                            save_dir = ANNOUNCEMENT_IMAGE_DIR / ann_date.strftime("%Y-%m-%d") / sanitize_text(ann_title)
-                            for file in ann_images:
-                                saved_name = save_uploaded_file(file, save_dir)
-                                image_names.append(saved_name)
-                        new_ann = {
-                            "date": ann_date.strftime("%Y-%m-%d"),
-                            "title": ann_title,
-                            "content": ann_content,
-                            "images": ", ".join(image_names),
-                        }
-                        st.session_state.announcements = pd.concat([st.session_state.announcements, pd.DataFrame([new_ann])], ignore_index=True)
-                        save_announcements()
-                        st.success("공지사항이 등록되었습니다.")
+                    image_names = []
+                    if ann_images:
+                        save_dir = ANNOUNCEMENT_IMAGE_DIR / ann_date.strftime("%Y-%m-%d") / sanitize_text(ann_title)
+                        for file in ann_images:
+                            saved_name = save_uploaded_file(file, save_dir)
+                            image_names.append(saved_name)
+                        
+                    new_ann = {
+                        "date": ann_date.strftime("%Y-%m-%d"),
+                        "title": ann_title,
+                        "content": ann_content,
+                        "images": ", ".join(image_names),
+                    }
+                    st.session_state.announcements = pd.concat([st.session_state.announcements, pd.DataFrame([new_ann])], ignore_index=True)
+                    save_announcements()
+                    st.success("공지사항이 등록되었습니다.")
 
     st.markdown("---")
     st.subheader("공지 목록")
@@ -1031,36 +1128,33 @@ def show_evaluation():
                     value=0,
                     key="eval_mileage",
                 )
-            eval_images = st.file_uploader("평가 이미지 업로드 (최대 3MB)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            eval_images = st.file_uploader("평가 이미지 업로드", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
             eval_submit = st.form_submit_button("저장")
 
             if eval_submit:
                 if not eval_reason:
                     st.error("사유를 입력해주세요.")
                 else:
-                    invalid_files = [file.name for file in eval_images if getattr(file, "size", 0) > MAX_IMAGE_SIZE]
-                    if invalid_files:
-                        st.error(f"다음 이미지의 크기가 3MB를 초과했습니다: {', '.join(invalid_files)}")
-                    else:
-                        image_names = []
-                        if eval_images:
-                            save_dir = EVALUATION_IMAGE_DIR / eval_date.strftime("%Y-%m-%d") / sanitize_text(eval_company)
-                            for file in eval_images:
-                                saved_name = save_uploaded_file(file, save_dir)
-                                image_names.append(saved_name)
-                        new_eval = {
-                            "date": eval_date.strftime("%Y-%m-%d"),
-                            "factory": eval_factory,
-                            "company": eval_company,
-                            "type": eval_type,
-                            "reason": eval_reason,
-                            "warning_count": int(warning_count),
-                            "mileage": int(mileage),
-                            "images": ", ".join(image_names),
-                        }
-                        st.session_state.evaluations = pd.concat([st.session_state.evaluations, pd.DataFrame([new_eval])], ignore_index=True)
-                        save_evaluations()
-                        st.success("평가가 저장되었습니다.")
+                    image_names = []
+                    if eval_images:
+                        save_dir = EVALUATION_IMAGE_DIR / eval_date.strftime("%Y-%m-%d") / sanitize_text(eval_company)
+                        for file in eval_images:
+                            saved_name = save_uploaded_file(file, save_dir)
+                            image_names.append(saved_name)
+                        
+                    new_eval = {
+                        "date": eval_date.strftime("%Y-%m-%d"),
+                        "factory": eval_factory,
+                        "company": eval_company,
+                        "type": eval_type,
+                        "reason": eval_reason,
+                        "warning_count": int(warning_count),
+                        "mileage": int(mileage),
+                        "images": ", ".join(image_names),
+                    }
+                    st.session_state.evaluations = pd.concat([st.session_state.evaluations, pd.DataFrame([new_eval])], ignore_index=True)
+                    save_evaluations()
+                    st.success("평가가 저장되었습니다.")
 
     st.markdown("---")
     st.subheader("협력사별 누적 평가 / 마일리지")
@@ -1174,7 +1268,7 @@ def main():
                     auth_password = st.text_input("추가 관리자 비밀번호 입력", type="password")
                     auth_submit = st.form_submit_button("인증")
                     if auth_submit:
-                        if auth_password == st.secrets["ADMIN_PASSWORD"]:
+                        if auth_password and ADMIN_PASSWORD and auth_password == ADMIN_PASSWORD:
                             st.session_state.settings_access_granted = True
                             st.success("관리자 설정 접근이 승인되었습니다.")
                             st.rerun()
