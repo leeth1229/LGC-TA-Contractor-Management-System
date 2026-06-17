@@ -1,4 +1,4 @@
-last wakeup: 2026-06-17 09:30
+last wakeup: 2026-06-17 11:00
 
 # 🎈 LGC TA 협력사 관리 시스템
 > **배포 주소**: https://lgc-ta-contractor-management-system-oqh6fn5lr98n5rah37hnkz.streamlit.app
