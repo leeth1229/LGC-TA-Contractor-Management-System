@@ -1,6 +1,2 @@
 report_uid,date,factory,company,task,work_order,personnel,entry_status,equipment,tons,progress,notes,images,start_time,end_time,equipment_locations
-45141fcb-43f6-4134-ba41-f0eff4408b15,2026-06-09,HDPE,대신,PE 배관 보수,작업명 입력1,7,정상작업,"Fork_lift+3ton, Crane+100ton",103,22,wfdf,,08:00,17:00,"[{""equipment"": ""Fork_lift"", ""tons"": 3, ""x_pct"": 0.284286, ""y_pct"": 0.455041, ""map_file"": ""HDPE.png""}, {""equipment"": ""Crane"", ""tons"": 100, ""x_pct"": 0.401429, ""y_pct"": 0.724796, ""map_file"": ""HDPE.png""}]"
-f311aacf-6ed1-4da4-b1cb-167cc67b7593,2026-06-10,HDPE,대신,PE 배관 보수,작업명 입력1,5,정상작업,Crane+75ton,75,37,test2,,07:55,17:10,"[{""equipment"": ""Crane"", ""tons"": 75, ""x_pct"": 0.48, ""y_pct"": 0.645777, ""map_file"": ""HDPE.png""}]"
-afd3b452-9506-42c0-b659-8fc62214df28,2026-06-09,IPA2,퍼펙트,GB-120 O/H,작업명 입력,5,정상작업,없음,0,14,swdfwd,,08:00,17:00,[]
-b0ffd6bd-769e-40f6-bf87-f61418c5775a,2026-06-08,HDPE,대신,PE 배관 보수,작업명 입력1,7,정상작업,Cargo+15ton,15,14,asd,,08:00,17:00,"[{""equipment"": ""Cargo"", ""tons"": 15, ""x_pct"": 0.438571, ""y_pct"": 0.367847, ""map_file"": ""HDPE.png""}]"
-248889b0-196d-4750-9fb2-f3d4c8feeed9,2026-06-15,HDPE,대신,PE 배관 보수,작업명 입력12,66,정상작업,Cargo+25ton,25,45,asdqsd,,08:00,17:00,"[{""equipment"": ""Cargo"", ""tons"": 25, ""x_pct"": 0.668571, ""y_pct"": 0.452316, ""map_file"": ""HDPE.png""}]"
+577f6554-0135-470a-af62-ad17e6821f3f,2026-06-22,HDPE,대신,PE 배관 보수,작업명 입력,5,정상작업,없음,0,0,,,08:00,17:00,[]
