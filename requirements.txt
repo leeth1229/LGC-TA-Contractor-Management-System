@@ -3,3 +3,4 @@ pandas
 plotly
 Pillow
 streamlit-image-coordinates
+requests

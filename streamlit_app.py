@@ -1,3 +1,6 @@
+import base64
+import requests
+from pathlib import Path
 import json
 import os
 import re
@@ -696,6 +699,398 @@ def save_settings(settings: dict):
             json.dump(settings, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
+# =============================================================================
+# GitHub 수동 Push / 백업
+# =============================================================================
+
+def get_github_config():
+    gh = st.secrets.get("GITHUB", {})
+    return {
+        "token": gh.get("TOKEN", ""),
+        "owner": gh.get("OWNER", ""),
+        "repo": gh.get("REPO", ""),
+        "branch": gh.get("BRANCH", "main"),
+        "data_path": gh.get("DATA_PATH", "data").strip("/"),
+    }
+
+
+def github_enabled() -> bool:
+    cfg = get_github_config()
+    return all([
+        cfg["token"],
+        cfg["owner"],
+        cfg["repo"],
+        cfg["branch"],
+    ])
+
+
+def github_headers():
+    cfg = get_github_config()
+    return {
+        "Authorization": f"Bearer {cfg['token']}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def github_repo_path(local_path: Path) -> str:
+    """
+    로컬 data 폴더 기준 상대경로를 GitHub repo 경로로 변환합니다.
+
+    예:
+    data/daily_reports.csv
+    -> data/daily_reports.csv
+
+    data/daily_images/2026-06-17/대아/a.jpg
+    -> data/daily_images/2026-06-17/대아/a.jpg
+    """
+    cfg = get_github_config()
+
+    try:
+        relative_path = local_path.relative_to(DATA_DIR)
+        return f"{cfg['data_path']}/{relative_path.as_posix()}"
+    except Exception:
+        return f"{cfg['data_path']}/{local_path.name}"
+
+
+def github_api_url(repo_path: str) -> str:
+    cfg = get_github_config()
+    return f"https://api.github.com/repos/{cfg['owner']}/{cfg['repo']}/contents/{repo_path}"
+
+
+def github_get_sha(local_path: Path) -> str | None:
+    """
+    GitHub에 이미 존재하는 파일이면 sha 반환.
+    없으면 None.
+    """
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다.")
+
+    cfg = get_github_config()
+    repo_path = github_repo_path(local_path)
+
+    res = requests.get(
+        github_api_url(repo_path),
+        headers=github_headers(),
+        params={"ref": cfg["branch"]},
+        timeout=20,
+    )
+
+    if res.status_code == 404:
+        return None
+
+    if not res.ok:
+        raise RuntimeError(f"GitHub SHA 조회 실패: {res.status_code} / {res.text}")
+
+    return res.json().get("sha")
+
+
+def upload_file_to_github(local_path: Path, commit_message: str):
+    """
+    로컬 파일 1개를 GitHub에 업로드합니다.
+    기존 파일이면 수정 commit, 신규 파일이면 생성 commit 됩니다.
+    """
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다. st.secrets의 [GITHUB] 설정을 확인하세요.")
+
+    if not local_path.exists():
+        raise FileNotFoundError(f"업로드할 파일이 없습니다: {local_path}")
+
+    if local_path.is_dir():
+        return None
+
+    cfg = get_github_config()
+    repo_path = github_repo_path(local_path)
+
+    file_bytes = local_path.read_bytes()
+    encoded_content = base64.b64encode(file_bytes).decode("utf-8")
+
+    sha = github_get_sha(local_path)
+
+    payload = {
+        "message": commit_message,
+        "content": encoded_content,
+        "branch": cfg["branch"],
+    }
+
+    if sha:
+        payload["sha"] = sha
+
+    res = requests.put(
+        github_api_url(repo_path),
+        headers=github_headers(),
+        json=payload,
+        timeout=60,
+    )
+
+    if res.status_code not in [200, 201]:
+        raise RuntimeError(f"GitHub 업로드 실패: {res.status_code} / {res.text}")
+
+    return res.json()
+
+
+def get_data_backup_files() -> list[Path]:
+    """
+    data 폴더 아래 모든 파일을 GitHub Push 대상으로 수집합니다.
+    CSV, JSON, 이미지, 도면 파일 등을 포함합니다.
+    """
+    if not DATA_DIR.exists():
+        return []
+
+    files = []
+
+    for file_path in DATA_DIR.rglob("*"):
+        if file_path.is_file():
+            files.append(file_path)
+
+    return sorted(files, key=lambda p: str(p))
+
+
+def get_backup_summary(files: list[Path]) -> dict:
+    """
+    백업 대상 파일 요약 정보를 반환합니다.
+    """
+    summary = {
+        "total": len(files),
+        "csv_json": 0,
+        "images": 0,
+        "maps": 0,
+        "others": 0,
+        "total_size_mb": 0.0,
+    }
+
+    image_exts = {".png", ".jpg", ".jpeg"}
+
+    total_size = 0
+
+    for file_path in files:
+        suffix = file_path.suffix.lower()
+
+        try:
+            total_size += file_path.stat().st_size
+        except Exception:
+            pass
+
+        if suffix in [".csv", ".json"]:
+            summary["csv_json"] += 1
+        elif suffix in image_exts:
+            summary["images"] += 1
+
+            try:
+                file_path.relative_to(FACTORY_MAP_DIR)
+                summary["maps"] += 1
+            except Exception:
+                pass
+        else:
+            summary["others"] += 1
+
+    summary["total_size_mb"] = round(total_size / 1024 / 1024, 2)
+
+    return summary
+
+
+def push_data_folder_to_github():
+    """
+    data 폴더 전체를 GitHub에 Push합니다.
+    파일 1개당 GitHub commit 1개가 생성됩니다.
+    """
+    files = get_data_backup_files()
+
+    uploaded = []
+    failed = []
+
+    if not files:
+        return uploaded, failed
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    total_files = len(files)
+
+    for idx, file_path in enumerate(files, start=1):
+        repo_path = github_repo_path(file_path)
+
+        try:
+            status_text.write(f"GitHub Push 중... ({idx}/{total_files}) {repo_path}")
+
+            upload_file_to_github(
+                file_path,
+                commit_message=f"TA data backup: {repo_path} / {now_str}",
+            )
+
+            uploaded.append(repo_path)
+
+        except Exception as e:
+            failed.append((repo_path, str(e)))
+
+        progress_bar.progress(idx / total_files)
+
+    status_text.write("GitHub Push 작업 완료")
+
+    return uploaded, failed
+
+def list_github_directory(repo_path: str) -> list[dict]:
+    """
+    GitHub repo의 특정 디렉터리 내용을 조회합니다.
+    파일/폴더 목록을 반환합니다.
+    """
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다.")
+
+    cfg = get_github_config()
+
+    res = requests.get(
+        github_api_url(repo_path),
+        headers=github_headers(),
+        params={"ref": cfg["branch"]},
+        timeout=30,
+    )
+
+    if res.status_code == 404:
+        return []
+
+    if not res.ok:
+        raise RuntimeError(f"GitHub 디렉터리 조회 실패: {res.status_code} / {res.text}")
+
+    data = res.json()
+
+    if isinstance(data, dict):
+        return [data]
+
+    if isinstance(data, list):
+        return data
+
+    return []
+
+
+def list_github_files_recursive(repo_dir_path: str) -> list[dict]:
+    """
+    GitHub repo의 특정 폴더 아래 파일을 재귀적으로 조회합니다.
+    반환값 예:
+    [
+        {"path": "data/daily_reports.csv", "sha": "..."},
+        ...
+    ]
+    """
+    remote_files = []
+
+    items = list_github_directory(repo_dir_path)
+
+    for item in items:
+        item_type = item.get("type")
+        item_path = item.get("path")
+
+        if item_type == "file":
+            remote_files.append({
+                "path": item_path,
+                "sha": item.get("sha"),
+            })
+
+        elif item_type == "dir":
+            remote_files.extend(list_github_files_recursive(item_path))
+
+    return remote_files
+
+
+def delete_github_file_by_path(repo_path: str, sha: str, commit_message: str):
+    """
+    GitHub repo의 파일 1개를 삭제합니다.
+    """
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다.")
+
+    cfg = get_github_config()
+
+    payload = {
+        "message": commit_message,
+        "sha": sha,
+        "branch": cfg["branch"],
+    }
+
+    res = requests.delete(
+        github_api_url(repo_path),
+        headers=github_headers(),
+        json=payload,
+        timeout=60,
+    )
+
+    if res.status_code not in [200, 201]:
+        raise RuntimeError(f"GitHub 파일 삭제 실패: {res.status_code} / {res.text}")
+
+    return res.json()
+
+
+def get_local_data_repo_paths() -> set[str]:
+    """
+    현재 앱 내부 data 폴더의 파일 경로를 GitHub repo 경로 형태로 반환합니다.
+    """
+    local_files = get_data_backup_files()
+    return {github_repo_path(file_path) for file_path in local_files}
+
+
+def sync_data_folder_to_github_with_delete():
+    """
+    data 폴더를 GitHub와 완전 동기화합니다.
+
+    1. 로컬 data 폴더 파일 생성/수정 Push
+    2. GitHub data 폴더에는 있지만 로컬에는 없는 파일 삭제
+
+    주의:
+    GitHub의 data 폴더 아래 파일 중 현재 앱에 없는 파일은 삭제됩니다.
+    """
+    uploaded = []
+    upload_failed = []
+    deleted = []
+    delete_failed = []
+
+    # 1단계: 로컬 파일 생성/수정 Push
+    uploaded, upload_failed = push_data_folder_to_github()
+
+    # 2단계: GitHub에만 남은 파일 삭제
+    cfg = get_github_config()
+    remote_root = cfg["data_path"]
+
+    try:
+        remote_files = list_github_files_recursive(remote_root)
+    except Exception as e:
+        delete_failed.append((remote_root, f"GitHub 원격 파일 목록 조회 실패: {e}"))
+        return uploaded, upload_failed, deleted, delete_failed
+
+    local_repo_paths = get_local_data_repo_paths()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 보호할 경로가 있으면 여기에 추가
+    protected_prefixes = [
+        # 예: "data/factory_maps/"
+        # 도면도 완전 동기화 대상이면 비워두세요.
+    ]
+
+    for remote_file in remote_files:
+        remote_path = remote_file.get("path", "")
+        remote_sha = remote_file.get("sha", "")
+
+        if not remote_path or not remote_sha:
+            continue
+
+        # 혹시 보호 경로가 있으면 삭제 제외
+        if any(remote_path.startswith(prefix) for prefix in protected_prefixes):
+            continue
+
+        if remote_path not in local_repo_paths:
+            try:
+                delete_github_file_by_path(
+                    repo_path=remote_path,
+                    sha=remote_sha,
+                    commit_message=f"TA data sync delete: {remote_path} / {now_str}",
+                )
+                deleted.append(remote_path)
+
+            except Exception as e:
+                delete_failed.append((remote_path, str(e)))
+
+    return uploaded, upload_failed, deleted, delete_failed
 
 
 # =============================================================================
@@ -2494,6 +2889,96 @@ def show_settings():
         save_settings(st.session_state.settings)
         st.success("대시보드 시작일이 저장되었습니다.")
 
+    st.markdown("---")
+    st.subheader("GitHub 데이터 Push / 백업")
+
+    if not github_enabled():
+        st.warning(
+            "GitHub 설정이 없습니다.\n\n"
+            "Streamlit Secrets에 [GITHUB] TOKEN, OWNER, REPO, BRANCH, DATA_PATH를 설정해 주세요."
+        )
+    else:
+        cfg = get_github_config()
+        backup_files = get_data_backup_files()
+        summary = get_backup_summary(backup_files)
+
+        st.info(
+            f"현재 GitHub 저장소: {cfg['owner']}/{cfg['repo']} / branch: {cfg['branch']}\n\n"
+            "관리자가 최종 확인 후 현재 앱 내부 data 폴더 전체를 GitHub에 Push합니다."
+        )
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("전체 파일", summary["total"])
+        c2.metric("CSV/JSON", summary["csv_json"])
+        c3.metric("이미지", summary["images"])
+        c4.metric("총 용량", f"{summary['total_size_mb']} MB")
+
+        st.caption(
+                    "Push 대상: data 폴더 아래 모든 파일입니다. "
+                    "daily_reports.csv, equipment_locations.csv, 이미지, 공장 도면 등이 포함됩니다."
+                )
+
+        col_push1, col_push2 = st.columns(2)
+
+        with col_push1:
+            if st.button("data 폴더 GitHub Push", key="github_push_data_folder", type="primary"):
+                with st.spinner("GitHub로 data 폴더를 Push하는 중입니다. 파일 수가 많으면 시간이 걸릴 수 있습니다."):
+                    uploaded, failed = push_data_folder_to_github()
+
+                if uploaded:
+                    st.success(f"GitHub Push 완료: {len(uploaded)}개 파일")
+
+                    with st.expander("Push 완료 파일 목록", expanded=False):
+                        for file_name in uploaded:
+                            st.write(f"- {file_name}")
+
+                if failed:
+                    st.error(f"GitHub Push 실패: {len(failed)}개 파일")
+
+                    with st.expander("Push 실패 파일 목록", expanded=True):
+                        for file_name, err in failed:
+                            st.write(f"- {file_name}")
+                            st.code(err, language="text")
+
+        with col_push2:
+            if st.button("data 폴더 GitHub 완전 동기화", key="github_sync_data_folder_with_delete"):
+                st.warning(
+                    "완전 동기화는 GitHub data 폴더에는 있지만 현재 앱 data 폴더에는 없는 파일을 삭제합니다."
+                )
+
+                with st.spinner("GitHub data 폴더를 현재 앱 data 폴더와 완전 동기화하는 중입니다."):
+                    uploaded, upload_failed, deleted, delete_failed = sync_data_folder_to_github_with_delete()
+
+                if uploaded:
+                    st.success(f"생성/수정 완료: {len(uploaded)}개 파일")
+
+                    with st.expander("생성/수정 완료 파일 목록", expanded=False):
+                        for file_name in uploaded:
+                            st.write(f"- {file_name}")
+
+                if deleted:
+                    st.warning(f"GitHub에서 삭제 완료: {len(deleted)}개 파일")
+
+                    with st.expander("삭제된 GitHub 파일 목록", expanded=False):
+                        for file_name in deleted:
+                            st.write(f"- {file_name}")
+
+                if upload_failed:
+                    st.error(f"생성/수정 실패: {len(upload_failed)}개 파일")
+
+                    with st.expander("생성/수정 실패 목록", expanded=True):
+                        for file_name, err in upload_failed:
+                            st.write(f"- {file_name}")
+                            st.code(err, language="text")
+
+                if delete_failed:
+                    st.error(f"삭제 실패: {len(delete_failed)}개 파일")
+
+                    with st.expander("삭제 실패 목록", expanded=True):
+                        for file_name, err in delete_failed:
+                            st.write(f"- {file_name}")
+                            st.code(err, language="text")
+        
     st.markdown("---")
     st.subheader("공장 도면 이미지 안내")
 
