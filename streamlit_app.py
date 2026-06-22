@@ -41,8 +41,8 @@ if isinstance(LG_CREDENTIALS, dict) and "ADMIN_PASSWORD" in LG_CREDENTIALS:
 
 
 CONTRACTORS = [
-    {"name": "대아", "factory": "NCC", "order": "NCC Cracking H/T 보수"},
-    {"name": "동남로", "factory": "OXO", "order": "DC-101 내화물 보수"},
+    {"name": "대아", "factory": "3AA", "order": "NCC Cracking H/T 보수"},
+    {"name": "동남로", "factory": "NPG", "order": "DC-101 내화물 보수"},
     {"name": "퍼펙트", "factory": "IPA2", "order": "GB-120 O/H"},
     {"name": "퍼펙트", "factory": "IPA3", "order": "GB-3120 O/H"},
     {"name": "대신", "factory": "HDPE", "order": "PE 배관 보수"},
