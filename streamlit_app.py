@@ -41,11 +41,14 @@ if isinstance(LG_CREDENTIALS, dict) and "ADMIN_PASSWORD" in LG_CREDENTIALS:
 
 
 CONTRACTORS = [
-    {"name": "대아", "factory": "3AA", "order": "NCC Cracking H/T 보수"},
-    {"name": "동남로", "factory": "NPG", "order": "DC-101 내화물 보수"},
-    {"name": "퍼펙트", "factory": "IPA2", "order": "GB-120 O/H"},
-    {"name": "퍼펙트", "factory": "IPA3", "order": "GB-3120 O/H"},
-    {"name": "대신", "factory": "HDPE", "order": "PE 배관 보수"},
+    {"name": "GS네오텍", "factory": "NPG", "order": "배관 작업"},
+    {"name": "진흥플랜트", "factory": "NPG", "order": "비계/보온 작업"},
+    {"name": "케이에스컴프레셔", "factory": "NPG", "order": "회전기계 O/H"},
+    {"name": "신정개발", "factory": "NPG", "order": "FBR 촉매 교체"},
+    {"name": "한국콘트롤밸브", "factory": "NPG", "order": "PSV O/H"},
+    {"name": "한국이엠", "factory": "NPG", "order": "열교환기 Chemical Cleaning"},
+    {"name": "미래기계기술", "factory": "NPG", "order": "Jet Cleaning"},
+    {"name": "지구환경", "factory": "NPG", "order": "Vessel Cleaning"}
 ]
 
 
