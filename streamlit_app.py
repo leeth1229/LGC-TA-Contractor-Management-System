@@ -41,14 +41,11 @@ if isinstance(LG_CREDENTIALS, dict) and "ADMIN_PASSWORD" in LG_CREDENTIALS:
 
 
 CONTRACTORS = [
-    {"name": "GS네오텍", "factory": "NPG", "order": "배관 작업"},
-    {"name": "진흥플랜트", "factory": "NPG", "order": "비계/보온 작업"},
-    {"name": "케이에스컴프레셔", "factory": "NPG", "order": "회전기계 O/H"},
-    {"name": "신정개발", "factory": "NPG", "order": "FBR 촉매 교체"},
-    {"name": "한국콘트롤밸브", "factory": "NPG", "order": "PSV O/H"},
-    {"name": "한국이엠", "factory": "NPG", "order": "열교환기 Chemical Cleaning"},
-    {"name": "미래기계기술", "factory": "NPG", "order": "Jet Cleaning"},
-    {"name": "지구환경", "factory": "NPG", "order": "Vessel Cleaning"}
+    {"name": "GS네오텍", "factory": "3AA", "order": "배관/장치 작업"},
+    {"name": "진흥플랜트", "factory": "3AA", "order": "비계/보온 작업"},
+    {"name": "케이에스컴프레셔", "factory": "3AA", "order": "회전기계 O/H"},
+    {"name": "산단이앤지", "factory": "3AA", "order": "Column Cleaning"},
+    {"name": "지구환경", "factory": "3AA", "order": "EA-131 외 Vessel Vacuum Cleaning"}
 ]
 
 
@@ -1327,16 +1324,22 @@ def login_page():
     st.session_state.login_type = login_type
 
     if login_type == "협력사":
-        companies = sorted({c["name"] for c in CONTRACTORS})
-        company = st.selectbox("협력사 선택", companies)
+        factories_for_company = sorted({c["factory"] for c in CONTRACTORS})
+        factory = st.selectbox("공장", factories_for_company)
 
-        factories_for_company = sorted({c["factory"] for c in CONTRACTORS if c["name"] == company})
-        factory = st.selectbox("작업 공장", factories_for_company)
+        companies = sorted({c["name"] for c in CONTRACTORS if c["factory"] == factory})
+        company = st.selectbox("협력사 선택", companies)
+        
+        # companies = sorted({c["name"] for c in CONTRACTORS})
+        # company = st.selectbox("협력사 선택", companies)
+
+        # factories_for_company = sorted({c["factory"] for c in CONTRACTORS if c["name"] == company})
+        # factory = st.selectbox("작업 공장", factories_for_company)
 
         if st.button("로그인"):
             st.session_state.logged_in = True
-            st.session_state.user = company
             st.session_state.logged_factory = factory
+            st.session_state.user = company
             st.rerun()
 
     else:
@@ -1346,8 +1349,8 @@ def login_page():
         if st.button("로그인"):
             if username in LG_CREDENTIALS and password == LG_CREDENTIALS[username]:
                 st.session_state.logged_in = True
-                st.session_state.user = username
                 st.session_state.logged_factory = FACTORIES[0]
+                st.session_state.user = username
                 st.success("LG.C 사용자로 로그인되었습니다.")
                 st.rerun()
             else:
