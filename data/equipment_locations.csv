@@ -1,1 +1,3 @@
 location_id,report_uid,date,factory,company,task,work_order,equipment_seq,equipment,tons,x_pct,y_pct,map_file,created_at,updated_at
+de439e70-45af-4b49-85f0-c1bbb25bf966,ab0bccc1-01a9-4618-ac04-0fd3f846928e,2026-06-24,3AA,GS네오텍,배관/장치 작업,배관/장치 작업,1,Crane,70,0.402857,0.446181,3AA.png,2026-06-24 06:58:29,2026-06-24 06:58:29
+6f0dbd59-a71c-40b5-a178-ea7be6eb1864,8a496e6b-435a-45cc-85c1-cd3682e939a8,2026-06-24,3AA,산단이앤지,Column Cleaning,DA-207 Polymer Cleaning,1,Crane,70,0.361429,0.444444,3AA.png,2026-06-24 07:01:06,2026-06-24 07:01:06
