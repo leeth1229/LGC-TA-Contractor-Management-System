@@ -1,1 +1,6 @@
 report_uid,date,factory,company,task,work_order,personnel,entry_status,equipment,tons,progress,notes,images,start_time,end_time,equipment_locations
+ab0bccc1-01a9-4618-ac04-0fd3f846928e,2026-06-24,3AA,GS네오텍,배관/장치 작업,배관/장치 작업,39,정상작업,Crane+70ton,70,0,,,,,"[{""equipment"": ""Crane"", ""tons"": 70, ""x_pct"": 0.402857, ""y_pct"": 0.446181, ""map_file"": ""3AA.png""}]"
+b4605935-3fa3-4270-9d90-c475511b858d,2026-06-24,3AA,케이에스컴프레셔,회전기계 O/H,GB-113/123 O/H,8,정상작업,없음,0,0,,,,,[]
+8a496e6b-435a-45cc-85c1-cd3682e939a8,2026-06-24,3AA,산단이앤지,Column Cleaning,DA-207 Polymer Cleaning,6,정상작업,Crane+70ton,70,0,,,,,"[{""equipment"": ""Crane"", ""tons"": 70, ""x_pct"": 0.361429, ""y_pct"": 0.444444, ""map_file"": ""3AA.png""}]"
+9ddb1430-599e-4be2-a26c-acfc52c40c9c,2026-06-24,3AA,지구환경,EA-131 외 Vessel Vacuum Cleaning,EA-131/DA-201 Vacuum Cleaning,4,정상작업,없음,0,0,,,,,[]
+433f3160-bfcf-4da6-9e0e-522a227121f7,2026-06-24,3AA,진흥플랜트,비계/보온 작업,#100/200공정 비계 설치 및 보온 해체 작업,10,정상작업,없음,0,0,,,,,[]
