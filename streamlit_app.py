@@ -6,8 +6,8 @@ import os
 import re
 import shutil
 from io import BytesIO
+import hashlib
 import uuid
-from pathlib import Path
 from datetime import datetime, date
 
 import streamlit as st
@@ -80,9 +80,36 @@ EQUIPMENT_CATEGORIES = ["없음", "Cargo", "Crane", "Fork_lift"]
 # 공통 유틸
 # =============================================================================
 
+
 def sanitize_text(value: str) -> str:
     return "".join(c for c in str(value) if c.isalnum() or c in (" ", "-", "_")).strip()
 
+def sanitize_filename(filename: str) -> str:
+    """
+    업로드 파일명 전용 정리 함수입니다.
+    - 파일명 본문은 안전 문자만 남김
+    - 확장자(.jpg, .png 등)는 보존
+    - 확장자가 없는 경우 원본 포맷 깨짐 방지를 위해 .jpg를 기본 부여
+    """
+    p = Path(str(filename))
+
+    # 파일명 본문 정리
+    safe_stem = "".join(
+        c for c in p.stem
+        if c.isalnum() or c in (" ", "-", "_")
+    ).strip()
+
+    if not safe_stem:
+        safe_stem = f"image_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+    # 확장자 정리
+    suffix = p.suffix.lower()
+
+    # 허용 확장자만 인정
+    if suffix not in [".jpg", ".jpeg", ".png"]:
+        suffix = ".jpg"
+
+    return f"{safe_stem}{suffix}"
 
 def format_minutes_to_time(minutes) -> str:
     if minutes is None or pd.isna(minutes):
@@ -501,9 +528,7 @@ def resize_image_bytes(file_bytes: bytes, max_dimension: int = MAX_IMAGE_DIMENSI
 def save_uploaded_file(uploaded_file, target_dir: Path):
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = sanitize_text(uploaded_file.name)
-    if not filename:
-        filename = f"image_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+    filename = sanitize_filename(uploaded_file.name)
 
     destination = target_dir / filename
 
@@ -828,6 +853,47 @@ def upload_file_to_github(local_path: Path, commit_message: str):
 
     return res.json()
 
+def upload_file_to_github_with_remote_sha(local_path: Path, commit_message: str, remote_sha: str | None):
+    """
+    GitHub 원격 SHA를 이미 알고 있는 상태에서 파일 업로드.
+    - remote_sha가 있으면 기존 파일 수정
+    - remote_sha가 없으면 신규 파일 생성
+    """
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다. st.secrets의 [GITHUB] 설정을 확인하세요.")
+
+    if not local_path.exists():
+        raise FileNotFoundError(f"업로드할 파일이 없습니다: {local_path}")
+
+    if local_path.is_dir():
+        return None
+
+    cfg = get_github_config()
+    repo_path = github_repo_path(local_path)
+
+    file_bytes = local_path.read_bytes()
+    encoded_content = base64.b64encode(file_bytes).decode("utf-8")
+
+    payload = {
+        "message": commit_message,
+        "content": encoded_content,
+        "branch": cfg["branch"],
+    }
+
+    if remote_sha:
+        payload["sha"] = remote_sha
+
+    res = requests.put(
+        github_api_url(repo_path),
+        headers=github_headers(),
+        json=payload,
+        timeout=60,
+    )
+
+    if res.status_code not in [200, 201]:
+        raise RuntimeError(f"GitHub 업로드 실패: {res.status_code} / {res.text}")
+
+    return res.json()
 
 def get_data_backup_files() -> list[Path]:
     """
@@ -930,6 +996,76 @@ def push_data_folder_to_github():
     status_text.write("GitHub Push 작업 완료")
 
     return uploaded, failed
+
+def push_changed_data_files_to_github():
+    """
+    data 폴더 파일 중 GitHub와 내용이 다른 파일만 Push합니다.
+    기존 이미지처럼 이미 동일한 파일은 업로드하지 않습니다.
+    """
+    files = get_data_backup_files()
+
+    uploaded = []
+    skipped = []
+    failed = []
+
+    if not files:
+        return uploaded, skipped, failed
+
+    if not github_enabled():
+        raise RuntimeError("GitHub 설정이 없습니다.")
+
+    cfg = get_github_config()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    total_files = len(files)
+
+    # GitHub 원격 data 폴더 파일 목록을 먼저 한 번 수집
+    try:
+        remote_files = list_github_files_recursive(cfg["data_path"])
+        remote_sha_map = {
+            item.get("path", ""): item.get("sha", "")
+            for item in remote_files
+            if item.get("path") and item.get("sha")
+        }
+    except Exception as e:
+        raise RuntimeError(f"GitHub 원격 파일 목록 조회 실패: {e}")
+
+    for idx, file_path in enumerate(files, start=1):
+        repo_path = github_repo_path(file_path)
+
+        try:
+            status_text.write(f"변경 여부 확인 중... ({idx}/{total_files}) {repo_path}")
+
+            local_sha = calculate_git_blob_sha(file_path)
+            remote_sha = remote_sha_map.get(repo_path)
+
+            # GitHub 파일과 로컬 파일 내용이 같으면 업로드 생략
+            if remote_sha == local_sha:
+                skipped.append(repo_path)
+                progress_bar.progress(idx / total_files)
+                continue
+
+            status_text.write(f"GitHub Push 중... ({idx}/{total_files}) {repo_path}")
+
+            upload_file_to_github_with_remote_sha(
+                file_path,
+                commit_message=f"TA data backup changed: {repo_path} / {now_str}",
+                remote_sha=remote_sha,
+            )
+
+            uploaded.append(repo_path)
+
+        except Exception as e:
+            failed.append((repo_path, str(e)))
+
+        progress_bar.progress(idx / total_files)
+
+    status_text.write("변경 파일 GitHub Push 작업 완료")
+
+    return uploaded, skipped, failed
 
 def list_github_directory(repo_path: str) -> list[dict]:
     """
@@ -1046,7 +1182,7 @@ def sync_data_folder_to_github_with_delete():
     delete_failed = []
 
     # 1단계: 로컬 파일 생성/수정 Push
-    uploaded, upload_failed = push_data_folder_to_github()
+    uploaded, skipped, upload_failed = push_changed_data_files
 
     # 2단계: GitHub에만 남은 파일 삭제
     cfg = get_github_config()
@@ -1056,7 +1192,7 @@ def sync_data_folder_to_github_with_delete():
         remote_files = list_github_files_recursive(remote_root)
     except Exception as e:
         delete_failed.append((remote_root, f"GitHub 원격 파일 목록 조회 실패: {e}"))
-        return uploaded, upload_failed, deleted, delete_failed
+        return uploaded, skipped, upload_failed, deleted, delete_failed
 
     local_repo_paths = get_local_data_repo_paths()
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1092,6 +1228,14 @@ def sync_data_folder_to_github_with_delete():
 
     return uploaded, upload_failed, deleted, delete_failed
 
+def calculate_git_blob_sha(local_path: Path) -> str:
+    """
+    GitHub Contents API의 file sha와 비교하기 위한 Git blob SHA 계산.
+    일반 sha1(file_bytes)가 아니라 Git blob 방식으로 계산해야 함.
+    """
+    file_bytes = local_path.read_bytes()
+    header = f"blob {len(file_bytes)}\0".encode("utf-8")
+    return hashlib.sha1(header + file_bytes).hexdigest()
 
 # =============================================================================
 # 중장비 위치 CSV 동기화
@@ -2929,13 +3073,20 @@ def show_settings():
         with col_push1:
             if st.button("data 폴더 GitHub Push", key="github_push_data_folder", type="primary"):
                 with st.spinner("GitHub로 data 폴더를 Push하는 중입니다. 파일 수가 많으면 시간이 걸릴 수 있습니다."):
-                    uploaded, failed = push_data_folder_to_github()
+                    uploaded, skipped, failed = push_changed_data_files_to_github()
 
                 if uploaded:
                     st.success(f"GitHub Push 완료: {len(uploaded)}개 파일")
 
                     with st.expander("Push 완료 파일 목록", expanded=False):
                         for file_name in uploaded:
+                            st.write(f"- {file_name}")
+
+                if skipped:
+                    st.info(f"변경 없음으로 생략: {len(skipped)}개 파일")
+
+                    with st.expander("업로드 생략 파일 목록", expanded=False):
+                        for file_name in skipped:
                             st.write(f"- {file_name}")
 
                 if failed:
@@ -2953,7 +3104,7 @@ def show_settings():
                 )
 
                 with st.spinner("GitHub data 폴더를 현재 앱 data 폴더와 완전 동기화하는 중입니다."):
-                    uploaded, upload_failed, deleted, delete_failed = sync_data_folder_to_github_with_delete()
+                    uploaded, skipped, upload_failed, deleted, delete_failed = sync_data_folder_to_github_with_delete()
 
                 if uploaded:
                     st.success(f"생성/수정 완료: {len(uploaded)}개 파일")
@@ -3023,6 +3174,65 @@ def show_settings():
         reset_system_data()
         st.success("시스템 데이터가 초기화되었습니다.")
 
+    st.markdown("---")
+    st.subheader("이미지 파일명 확장자 복구")
+    if st.button("깨진 이미지 파일명 복구", key="repair_broken_image_extensions"):
+        repaired = []
+        skipped = []
+
+        image_dirs = [
+            DAILY_IMAGE_DIR,
+            ANNOUNCEMENT_IMAGE_DIR,
+            EVALUATION_IMAGE_DIR,
+            FACTORY_MAP_DIR,
+        ]
+
+        for image_dir in image_dirs:
+            if not image_dir.exists():
+                continue
+
+            for file_path in image_dir.rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                name = file_path.name
+                lower_name = name.lower()
+
+                new_path = None
+
+                if file_path.suffix == "":
+                    if lower_name.endswith("jpg"):
+                        new_path = file_path.with_name(name[:-3] + ".jpg")
+                    elif lower_name.endswith("jpeg"):
+                        new_path = file_path.with_name(name[:-4] + ".jpeg")
+                    elif lower_name.endswith("png"):
+                        new_path = file_path.with_name(name[:-3] + ".png")
+
+                if new_path and new_path != file_path:
+                    try:
+                        if not new_path.exists():
+                            file_path.rename(new_path)
+                            repaired.append(f"{file_path} -> {new_path}")
+                        else:
+                            skipped.append(f"이미 존재하여 건너뜀: {new_path}")
+                    except Exception as e:
+                        skipped.append(f"실패: {file_path} / {e}")
+
+        if repaired:
+            st.success(f"파일명 복구 완료: {len(repaired)}개")
+
+            with st.expander("복구 목록", expanded=False):
+                for item in repaired:
+                    st.write(item)
+        else:
+            st.info("복구할 파일명이 없습니다.")
+
+        if skipped:
+            st.warning(f"건너뛰거나 실패한 파일: {len(skipped)}개")
+
+            with st.expander("건너뜀/실패 목록", expanded=False):
+                for item in skipped:
+                    st.write(item)
 
 # =============================================================================
 # main
