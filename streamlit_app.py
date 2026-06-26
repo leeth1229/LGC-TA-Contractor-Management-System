@@ -1182,7 +1182,7 @@ def sync_data_folder_to_github_with_delete():
     delete_failed = []
 
     # 1단계: 로컬 파일 생성/수정 Push
-    uploaded, skipped, upload_failed = push_changed_data_files
+    uploaded, skipped, upload_failed = push_changed_data_files_to_github()
 
     # 2단계: GitHub에만 남은 파일 삭제
     cfg = get_github_config()
@@ -1226,7 +1226,7 @@ def sync_data_folder_to_github_with_delete():
             except Exception as e:
                 delete_failed.append((remote_path, str(e)))
 
-    return uploaded, upload_failed, deleted, delete_failed
+    return uploaded, skipped, upload_failed, deleted, delete_failed
 
 def calculate_git_blob_sha(local_path: Path) -> str:
     """
