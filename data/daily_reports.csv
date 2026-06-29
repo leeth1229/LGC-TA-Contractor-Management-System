@@ -2,3 +2,4 @@ report_uid,date,factory,company,task,work_order,personnel,entry_status,equipment
 6bb53f81-0c58-4c04-8b00-42c53069ebe8,2026-06-26,3AA,지구환경,EA-131 외 Vessel Vacuum Cleaning,EA-131 Cleaning ,4,정상작업,없음,0,48," 
 EA-131 Cleaning  진행중",IMG_2224.jpeg,09:25,23:00,[]
 9943889f-3277-43ab-b17b-458ce31dd178,2026-06-29,3AA,지구환경,EA-131 외 Vessel Vacuum Cleaning,test,5,정상작업,없음,0,0,test,,08:00,17:00,[]
+cec2bffb-0eac-44e5-a103-8c7ba7f8bea9,2026-06-29,3AA,GS네오텍,배관/장치 작업,작업명 입력,5,정상작업,없음,0,0,,,,,[]
